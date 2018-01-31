@@ -16,7 +16,7 @@ export default {
     'Sean Connery': 87,
     'Pippo Baudo': 81,
     'Andrea Camilleri': 92,
-    'Kim Jong-Un': 36,
+    'Kim Jong-un': 36,
     'Shane MacGowan': 60,
     'Donald Sutherland': 82,
     'Franca Valeri': 97,

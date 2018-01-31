@@ -4,6 +4,8 @@ import got from 'got'
 
 const wikiCall = ({ query, lang = 'it' }) => `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${query}&prop=revisions&rvprop=content&format=json&formatversion=2`
 
+const isDeadRegex = /(LuogoMorte = (.+) \|GiornoMeseMorte = (.+) \|AnnoMorte)|(death_date = (.+) \| death_place)/g
+
 // returns the names of all the players of all teams from the object
 const getAllNames = fp.pipe(
   Object.values,
@@ -18,11 +20,21 @@ const toWikiQueryString = fp.pipe(
   fp.join('|')
 )
 
+const isMissing = page => page.missing || /#redirect/gi.test(page.revisions[0].content)
+const isNotMissing = page => !page.missing && !/#redirect/gi.test(page.revisions[0].content)
 
 // returns the one it didn't find the wikipedia page for
 const getMissing = fp.pipe(
   fp.get('query.pages'),
-  fp.filter(page => page.missing || page.revisions[0].content.startsWith('#redirect')),
+  fp.filter(isMissing),
+  fp.map('title'),
+)
+
+// returns the ones that are already dead
+const getDead = fp.pipe(
+  fp.get('query.pages'),
+  fp.filter(isNotMissing),
+  fp.filter(page => isDeadRegex.test(page.revisions[0].content)),
   fp.map('title'),
 )
 
@@ -30,6 +42,8 @@ const getMissing = fp.pipe(
 const hopefullyDead = getAllNames(rose)
 
 const responseIt = await got(wikiCall({ query: toWikiQueryString(hopefullyDead) }), { json: true })
+
+const dead = getDead(responseIt.body)
 
 const missingIt = getMissing(responseIt.body)
 if (missingIt.length > 0) {
@@ -39,4 +53,8 @@ if (missingIt.length > 0) {
   if (missingEn.length > 0) {
     throw new Error(`Couldn't find a wikipedia page for ${missingEn.join(', ')}`)
   }
+
+  dead.push(...getDead(responseEn.body))
 }
+
+// we now have the dead array, we will check is those in there have already been called out
