@@ -1,0 +1,19 @@
+{
+  "name": "fantamorto-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node -r @std/esm index.mjs"
+  },
+  "license": "MIT",
+  "@std/esm": {
+    "await": true
+  },
+  "devDependencies": {
+    "@std/esm": "^0.20.0"
+  },
+  "dependencies": {
+    "got": "^8.0.3",
+    "lodash": "^4.17.4"
+  }
+}
