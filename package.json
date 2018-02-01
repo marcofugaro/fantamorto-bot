@@ -3,16 +3,14 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node -r @std/esm index.mjs"
+    "start": "node index.js"
   },
   "license": "MIT",
-  "@std/esm": {
-    "await": true
-  },
-  "devDependencies": {
-    "@std/esm": "^0.20.0"
-  },
   "dependencies": {
+    "chalk": "^2.3.0",
+    "dotenv": "^5.0.0",
+    "google-auth-library": "^1.2.0",
+    "googleapis": "^25.0.0",
     "got": "^8.0.3",
     "lodash": "^4.17.4"
   }

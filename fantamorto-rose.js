@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   'Marco Fugaro': {
     'Lino Banfi': 81,
     'Bruno Arena': 61,
