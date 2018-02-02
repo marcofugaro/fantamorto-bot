@@ -1,3 +1,4 @@
+const fs = require('fs')
 const readline = require('readline')
 const google = require('googleapis')
 const { OAuth2Client } = require('google-auth-library')
@@ -89,6 +90,11 @@ async function getDeadListId(drive) {
     throw new Error('Missing DOCUMENT_NAME info, please check your .env file')
   }
 
+  // caching the request
+  if (global.deadListId) {
+    return global.deadListId
+  }
+
   const { data: { files } } = await promisify(drive.files.list)({
     q: `name = '${process.env.DOCUMENT_NAME}'`,
   })
@@ -97,6 +103,7 @@ async function getDeadListId(drive) {
     throw new Error('File morti.json was not found')
   }
 
+  global.deadListId = files[0].id
   return files[0].id
 }
 

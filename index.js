@@ -1,5 +1,4 @@
-const dotenv = require('dotenv')
-dotenv.config()
+require('dotenv').config()
 const fp = require('lodash/fp')
 const got = require('got')
 const chalk = require('chalk')
@@ -46,12 +45,14 @@ async function init() {
   const hopefullyDead = getAllNames(rose)
 
   const responseIt = await got(wikiCall({ query: toWikiQueryString(hopefullyDead) }), { json: true })
+  console.log(`Called ${responseIt.url}`)
 
   const dead = getDead(responseIt.body)
 
   const missingIt = getMissing(responseIt.body)
   if (missingIt.length > 0) {
     const responseEn = await got(wikiCall({ query: toWikiQueryString(missingIt), lang: 'en' }), { json: true })
+    console.log(`Called ${responseEn.url}`)
 
     const missingEn = getMissing(responseEn.body)
     if (missingEn.length > 0) {
