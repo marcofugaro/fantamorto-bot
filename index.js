@@ -2,12 +2,16 @@ require('dotenv').config()
 const fp = require('lodash/fp')
 const got = require('got')
 const chalk = require('chalk')
-const rose = require('./fantamorto-rose')
+const pEachSeries = require('p-each-series')
+const rose = require('./fantamorto-rose-2018')
 const { accessGoogleDrive, setDeadList, getDeadList } = require('./google-drive')
+
+const MAX_WIKIPEDIA_QUERIES = 50
 
 const wikiCall = ({ query, lang = 'it' }) => `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${query}&prop=revisions&rvprop=content&format=json&formatversion=2`
 
-const isDeadRegex = /(LuogoMorte = (.+) \|GiornoMeseMorte = (.+) \|AnnoMorte)|(death_date = (.+) \| death_place)/g
+const isDeadRegex = /(AnnoMorte = ([^\n]+))|(death_place = ([^\n]+))/g
+const isRedirectRegex = /^#((redirect)|(rinvia))/gi
 
 // returns the names of all the players of all teams from the object
 const getAllNames = fp.pipe(
@@ -23,8 +27,8 @@ const toWikiQueryString = fp.pipe(
   fp.join('|')
 )
 
-const isMissing = page => page.missing || /^#redirect/gi.test(page.revisions[0].content)
-const isNotMissing = page => !page.missing && !/^#redirect/gi.test(page.revisions[0].content)
+const isMissing = page => page.missing || isRedirectRegex.test(page.revisions[0].content)
+const isNotMissing = page => !page.missing && !isRedirectRegex.test(page.revisions[0].content)
 
 // returns the one it didn't find the wikipedia page for
 const getMissing = fp.pipe(
@@ -43,29 +47,36 @@ const getDead = fp.pipe(
 
 async function init() {
   const hopefullyDead = getAllNames(rose)
+  const dead = []
 
-  const responseIt = await got(wikiCall({ query: toWikiQueryString(hopefullyDead) }), { json: true })
-  console.log(`Called ${responseIt.url}`)
+  await pEachSeries(fp.chunk(MAX_WIKIPEDIA_QUERIES)(hopefullyDead), async (hopefullyDeadChunk) => {
+    const responseIt = await got(wikiCall({ query: toWikiQueryString(hopefullyDeadChunk) }), { json: true })
+    console.log(`Called ${responseIt.url}`)
 
-  const dead = getDead(responseIt.body)
+    dead.push(...getDead(responseIt.body))
 
-  const missingIt = getMissing(responseIt.body)
-  if (missingIt.length > 0) {
-    const responseEn = await got(wikiCall({ query: toWikiQueryString(missingIt), lang: 'en' }), { json: true })
-    console.log(`Called ${responseEn.url}`)
+    const missingIt = getMissing(responseIt.body)
+    if (missingIt.length > 0) {
+      const responseEn = await got(wikiCall({ query: toWikiQueryString(missingIt), lang: 'en' }), { json: true })
+      console.log(`Called ${responseEn.url}`)
 
-    const missingEn = getMissing(responseEn.body)
-    if (missingEn.length > 0) {
-      throw new Error(`Couldn't find a wikipedia page for ${missingEn.join(', ')}`)
+      const missingEn = getMissing(responseEn.body)
+      if (missingEn.length > 0) {
+        throw new Error(`Couldn't find a wikipedia page for ${missingEn.join(', ')}`)
+      }
+
+      dead.push(...getDead(responseEn.body))
     }
-
-    dead.push(...getDead(responseEn.body))
-  }
+  })
 
   const drive = await accessGoogleDrive()
   const deadList = await getDeadList(drive)
-  console.log(deadList)
-  await setDeadList(drive, deadList)
+  const freshlyDead = dead.filter(name => !deadList.includes(name))
+
+  if (freshlyDead.length > 0) {
+    await setDeadList(drive, [ ...deadList, ...freshlyDead ])
+    console.log('YO MAN A GUY DIED')
+  }
 }
 init()
   .catch(err => {
