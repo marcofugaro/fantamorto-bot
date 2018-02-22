@@ -45,6 +45,20 @@ const getDead = fp.pipe(
   fp.map('title'),
 )
 
+// returns an array with the team which contain the players received in input
+const getTeamsContaining = (players) => fp.pipe(
+  Object.keys,
+  fp.filter(team => fp.pipe(Object.keys, fp.intersection(players))(rose[team]).length > 0)
+)(rose)
+
+// sends a message to the fantamorto slack channel
+async function notifySlack(message) {
+  const botConfig = {
+    'text': message,
+  }
+  return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(botConfig) })
+}
+
 async function init() {
   const hopefullyDead = getAllNames(rose)
   const dead = []
@@ -75,7 +89,10 @@ async function init() {
 
   if (freshlyDead.length > 0) {
     await setDeadList(drive, [ ...deadList, ...freshlyDead ])
-    console.log('YO MAN A GUY DIED')
+    await notifySlack(`⚰️ *${freshlyDead.join(', ')}* è deceduto. RIP in peace. ⚰️`)
+    const winningTeams = getTeamsContaining(freshlyDead)
+    await notifySlack(`Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉`)
+    await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`(100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
   }
 }
 init()
@@ -83,5 +100,3 @@ init()
     console.log(chalk.red(err.message))
     process.exit()
   })
-
-// we now have the dead array, we will check is those in there have already been called out
