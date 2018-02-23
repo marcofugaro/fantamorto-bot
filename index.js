@@ -59,7 +59,7 @@ async function notifySlack(message) {
   return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(botConfig) })
 }
 
-async function init() {
+async function checkMorti(event, context, callback) {
   const hopefullyDead = getAllNames(rose)
   const dead = []
 
@@ -95,8 +95,8 @@ async function init() {
     await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`(100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
   }
 }
-init()
-  .catch(err => {
-    console.log(chalk.red(err.message))
-    process.exit()
-  })
+
+
+module.exports = {
+  checkMorti,
+}
