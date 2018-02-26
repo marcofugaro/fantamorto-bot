@@ -59,7 +59,13 @@ async function notifySlack(message) {
   return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(botConfig) })
 }
 
-async function checkMorti(event, context, callback) {
+async function checkMorti(event, context, callback = fp.noop) {
+  // notify aws lambda if there are any errors in promises
+  process.on('unhandledRejection', err => {
+    console.error(err.message)
+    callback(err)
+  })
+
   const hopefullyDead = getAllNames(rose)
   const dead = []
 
@@ -93,6 +99,14 @@ async function checkMorti(event, context, callback) {
     const winningTeams = getTeamsContaining(freshlyDead)
     await notifySlack(`Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉`)
     await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`(100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
+
+    // notify aws lambda
+    console.info(`--------------- ${freshlyDead.map(dead => dead.toUpperCase()).join(', ')} DIED ---------------`)
+    callback(null, `${freshlyDead.join(', ')} died!`)
+  } else {
+    // notify aws lambda
+    console.info('--------------- NOBODY DIED ---------------')
+    return callback(null, 'Nobody died.')
   }
 }
 
