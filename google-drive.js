@@ -2,7 +2,7 @@ const fs = require('fs')
 const readline = require('readline')
 const google = require('googleapis')
 const { OAuth2Client } = require('google-auth-library')
-const { promisify } = require('util')
+const pify = require('pify')
 
 // fix google docs weird characters
 function sanitize(jsonString) {
@@ -22,7 +22,7 @@ async function authorize(auth) {
     input: process.stdin,
     output: process.stdout
   })
-  const code = await promisify(rl.question)('Enter the code from that page here: ')
+  const code = await pify(rl.question)('Enter the code from that page here: ')
   rl.close()
 
   const { token, err } = await auth.getToken(code)
@@ -63,7 +63,7 @@ async function accessGoogleDrive() {
 async function getDeadList(drive) {
   const fileId = await getDeadListId(drive)
 
-  const response = await promisify(drive.files.export)({
+  const response = await pify(drive.files.export)({
     fileId,
     mimeType: 'text/plain',
   })
@@ -75,7 +75,7 @@ async function getDeadList(drive) {
 async function setDeadList(drive, deadList) {
   const fileId = await getDeadListId(drive)
 
-  const response = await promisify(drive.files.update)({
+  const response = await pify(drive.files.update)({
     fileId,
     media: {
       mimeType: 'text/plain',
@@ -95,7 +95,7 @@ async function getDeadListId(drive) {
     return global.deadListId
   }
 
-  const { data: { files } } = await promisify(drive.files.list)({
+  const { data: { files } } = await pify(drive.files.list)({
     q: `name = '${process.env.DOCUMENT_NAME}'`,
   })
 

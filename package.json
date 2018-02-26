@@ -12,7 +12,8 @@
     "googleapis": "^25.0.0",
     "got": "^8.0.3",
     "lodash": "^4.17.4",
-    "p-each-series": "^1.0.0"
+    "p-each-series": "^1.0.0",
+    "pify": "^3.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.0.0-beta.40",
