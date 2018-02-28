@@ -2,9 +2,9 @@ require('dotenv').config()
 const fp = require('lodash/fp')
 const got = require('got')
 const chalk = require('chalk')
-const pEachSeries = require('p-each-series')
+const pMap = require('p-map')
 const rose = require('./fantamorto-rose-2018')
-const { accessGoogleDrive, setDeadList, getDeadList } = require('./google-drive')
+const { getAlreadyDeadList, setAlreadyDeadList } = require('./google-drive')
 
 const MAX_WIKIPEDIA_QUERIES = 50
 
@@ -59,17 +59,10 @@ async function notifySlack(message) {
   return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(botConfig) })
 }
 
-async function checkMorti(event, context, callback = fp.noop) {
-  // notify aws lambda if there are any errors in promises
-  process.on('unhandledRejection', err => {
-    console.error(err.message)
-    callback(err)
-  })
-
-  const hopefullyDead = getAllNames(rose)
+async function getDeadFromWikipedia(hopefullyDead) {
   const dead = []
 
-  await pEachSeries(fp.chunk(MAX_WIKIPEDIA_QUERIES)(hopefullyDead), async (hopefullyDeadChunk) => {
+  await pMap(fp.chunk(MAX_WIKIPEDIA_QUERIES)(hopefullyDead), async (hopefullyDeadChunk) => {
     const responseIt = await got(wikiCall({ query: toWikiQueryString(hopefullyDeadChunk) }), { json: true })
     console.log(`Called ${responseIt.url}`)
 
@@ -89,12 +82,27 @@ async function checkMorti(event, context, callback = fp.noop) {
     }
   })
 
-  const drive = await accessGoogleDrive()
-  const deadList = await getDeadList(drive)
-  const freshlyDead = dead.filter(name => !deadList.includes(name))
+  return dead
+}
+
+async function checkMorti(event, context, callback = fp.noop) {
+  // notify aws lambda if there are any errors in promises
+  process.on('unhandledRejection', err => {
+    console.error(err.message)
+    callback(err)
+  })
+
+  const hopefullyDead = getAllNames(rose)
+
+  const [ dead, alreadyDead ] = await Promise.all([
+    getDeadFromWikipedia(hopefullyDead),
+    getAlreadyDeadList(),
+  ])
+
+  const freshlyDead = dead.filter(name => !alreadyDead.includes(name))
 
   if (freshlyDead.length > 0) {
-    await setDeadList(drive, [ ...deadList, ...freshlyDead ])
+    await setAlreadyDeadList([ ...alreadyDead, ...freshlyDead ])
     await notifySlack(`⚰️ *${freshlyDead.join(', ')}* è deceduto. RIP in peace. ⚰️`)
     const winningTeams = getTeamsContaining(freshlyDead)
     await notifySlack(`Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉`)
@@ -109,7 +117,6 @@ async function checkMorti(event, context, callback = fp.noop) {
     return callback(null, 'Nobody died.')
   }
 }
-
 
 module.exports = {
   checkMorti,

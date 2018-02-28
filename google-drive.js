@@ -56,12 +56,15 @@ async function accessGoogleDrive() {
   }
 
   auth.credentials = token
-  return google.drive({ version: 'v3', auth })
+  global.drive = google.drive({ version: 'v3', auth })
+  return global.drive
 }
 
 // gets the list from the google drive file
-async function getDeadList(drive) {
-  const fileId = await getDeadListId(drive)
+async function getAlreadyDeadList() {
+  const drive = global.drive || await accessGoogleDrive()
+
+  const fileId = await getDeadListId()
 
   const response = await pify(drive.files.export)({
     fileId,
@@ -72,7 +75,9 @@ async function getDeadList(drive) {
 }
 
 // writes to the google drive file the list
-async function setDeadList(drive, deadList) {
+async function setAlreadyDeadList(deadList) {
+  const drive = global.drive || await accessGoogleDrive()
+
   const fileId = await getDeadListId(drive)
 
   const response = await pify(drive.files.update)({
@@ -85,10 +90,12 @@ async function setDeadList(drive, deadList) {
 }
 
 // gets the id of the file where the list is stored
-async function getDeadListId(drive) {
+async function getDeadListId() {
   if (!process.env.DOCUMENT_NAME) {
     throw new Error('Missing DOCUMENT_NAME info, please check your .env file')
   }
+
+  const drive = global.drive || await accessGoogleDrive()
 
   // caching the request
   if (global.deadListId) {
@@ -109,7 +116,6 @@ async function getDeadListId(drive) {
 
 
 module.exports = {
-  accessGoogleDrive,
-  setDeadList,
-  getDeadList,
+  setAlreadyDeadList,
+  getAlreadyDeadList,
 }
