@@ -106,7 +106,7 @@ async function checkMorti(event, context, callback = fp.noop) {
     await notifySlack(`⚰️ *${freshlyDead.join(', ')}* è deceduto. RIP in peace. ⚰️`)
     const winningTeams = getTeamsContaining(freshlyDead)
     await notifySlack(`Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉`)
-    await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`(100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
+    await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`10 + (100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` (arrotondati all'intero più vicino) più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
 
     // notify aws lambda
     console.info(`--------------- ${freshlyDead.map(dead => dead.toUpperCase()).join(', ')} DIED ---------------`)
