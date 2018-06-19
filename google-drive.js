@@ -4,8 +4,11 @@ const google = require('googleapis')
 const { OAuth2Client } = require('google-auth-library')
 const pify = require('pify')
 
+global.drive = null
+global.alreadyQueriedDocs = {}
+
 // fix google docs weird characters
-function sanitize(jsonString) {
+function sanitizeGoogleDoc(jsonString) {
   return jsonString.slice(1)
 }
 
@@ -56,66 +59,72 @@ async function accessGoogleDrive() {
   }
 
   auth.credentials = token
-  global.drive = google.drive({ version: 'v3', auth })
-  return global.drive
+  return google.drive({ version: 'v3', auth })
 }
 
-// gets the list from the google drive file
-async function getAlreadyDeadList() {
-  const drive = global.drive || await accessGoogleDrive()
 
-  const fileId = await getDeadListId()
-
-  const response = await pify(drive.files.export)({
-    fileId,
-    mimeType: 'text/plain',
-  })
-
-  return JSON.parse(sanitize(response.data))
-}
-
-// writes to the google drive file the list
-async function setAlreadyDeadList(deadList) {
-  const drive = global.drive || await accessGoogleDrive()
-
-  const fileId = await getDeadListId(drive)
-
-  const response = await pify(drive.files.update)({
-    fileId,
-    media: {
-      mimeType: 'text/plain',
-      body: JSON.stringify(deadList),
-    }
-  })
-}
-
-// gets the id of the file where the list is stored
-async function getDeadListId() {
-  if (!process.env.DOCUMENT_NAME) {
-    throw new Error('Missing DOCUMENT_NAME info, please check your .env file')
+// gets the id of the google document
+async function getDocId(documentName) {
+  if (!global.drive) {
+    global.drive = await accessGoogleDrive()
   }
 
-  const drive = global.drive || await accessGoogleDrive()
-
-  // caching the request
-  if (global.deadListId) {
-    return global.deadListId
+  // check if we requested the file in the past
+  if (global.alreadyQueriedDocs.hasOwnProperty(documentName)) {
+    return global.alreadyQueriedDocs[documentName]
   }
 
-  const { data: { files } } = await pify(drive.files.list)({
-    q: `name = '${process.env.DOCUMENT_NAME}'`,
+  const { data: { files } } = await pify(global.drive.files.list)({
+    q: `name = '${documentName}'`,
   })
 
   if (files.length === 0) {
-    throw new Error('File morti.json was not found')
+    throw new Error(`File ${documentName} was not found`)
   }
 
-  global.deadListId = files[0].id
+  // cache the file id
+  global.alreadyQueriedDocs[documentName] = files[0].id
+
   return files[0].id
 }
 
 
+// reads the first google doc that finds with the requested name
+async function readGoogleDoc(documentName) {
+  if (!global.drive) {
+    global.drive = await accessGoogleDrive()
+  }
+
+  const fileId = await getDocId(documentName)
+
+  const response = await pify(global.drive.files.export)({
+    fileId,
+    mimeType: 'text/plain',
+  })
+
+  return JSON.parse(sanitizeGoogleDoc(response.data))
+}
+
+// writes the first google doc that finds with that name
+async function writeGoogleDoc(documentName, content) {
+  if (!global.drive) {
+    global.drive = await accessGoogleDrive()
+  }
+
+  const fileId = await getDocId(documentName)
+
+  const response = await pify(global.drive.files.update)({
+    fileId,
+    media: {
+      mimeType: 'text/plain',
+      body: JSON.stringify(content),
+    }
+  })
+
+  return response
+}
+
 module.exports = {
-  setAlreadyDeadList,
-  getAlreadyDeadList,
+  readGoogleDoc,
+  writeGoogleDoc,
 }

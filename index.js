@@ -1,17 +1,41 @@
 require('dotenv').config()
 const fp = require('lodash/fp')
 const got = require('got')
-const chalk = require('chalk')
-const pMap = require('p-map')
+const pEachSeries = require('p-each-series')
 const rose = require('./fantamorto-rose-2018')
-const { getAlreadyDeadList, setAlreadyDeadList } = require('./google-drive')
+const { getDeadFromWikipedia } = require('./wikipedia')
+const { readGoogleDoc, writeGoogleDoc } = require('./google-drive')
 
-const MAX_WIKIPEDIA_QUERIES = 50
+// read/write the list storage files
+async function getSavedDeadList() {
+  if (!process.env.DEAD_SAVED_DOCUMENT) {
+    throw new Error('Missing DEAD_SAVED_DOCUMENT info, please check your .env file')
+  }
 
-const wikiCall = ({ query, lang = 'it' }) => `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${query}&prop=revisions&rvprop=content&format=json&formatversion=2`
+  return await readGoogleDoc(process.env.DEAD_SAVED_DOCUMENT)
+}
+async function setSavedDeadList(deadList) {
+  if (!process.env.DEAD_SAVED_DOCUMENT) {
+    throw new Error('Missing DEAD_SAVED_DOCUMENT info, please check your .env file')
+  }
 
-const isDeadRegex = /(AnnoMorte = ([^\n]+))|(death_place = ([^\n]+))/g
-const isRedirectRegex = /^#((redirect)|(rinvia))/gi
+  return await writeGoogleDoc(process.env.DEAD_SAVED_DOCUMENT, deadList)
+}
+async function getMaybeDeadList() {
+  if (!process.env.DEAD_MAYBE_DOCUMENT) {
+    throw new Error('Missing DEAD_MAYBE_DOCUMENT info, please check your .env file')
+  }
+
+  return await readGoogleDoc(process.env.DEAD_MAYBE_DOCUMENT)
+}
+async function setMaybeDeadList(deadList) {
+  if (!process.env.DEAD_MAYBE_DOCUMENT) {
+    throw new Error('Missing DEAD_MAYBE_DOCUMENT info, please check your .env file')
+  }
+
+  return await writeGoogleDoc(process.env.DEAD_MAYBE_DOCUMENT, deadList)
+}
+
 
 // returns the names of all the players of all teams from the object
 const getAllNames = fp.pipe(
@@ -21,35 +45,11 @@ const getAllNames = fp.pipe(
   fp.uniq,
 )
 
-// ['name', 'Other name']  --> 'name|Other%20name'
-const toWikiQueryString = fp.pipe(
-  fp.map(encodeURI),
-  fp.join('|')
-)
-
-const isMissing = page => page.missing || isRedirectRegex.test(page.revisions[0].content)
-const isNotMissing = page => !page.missing && !isRedirectRegex.test(page.revisions[0].content)
-
-// returns the one it didn't find the wikipedia page for
-const getMissing = fp.pipe(
-  fp.get('query.pages'),
-  fp.filter(isMissing),
-  fp.map('title'),
-)
-
-// returns the ones that are already dead
-const getDead = fp.pipe(
-  fp.get('query.pages'),
-  fp.filter(isNotMissing),
-  fp.filter(page => isDeadRegex.test(page.revisions[0].content)),
-  fp.map('title'),
-)
-
-// returns an array with the team which contain the players received in input
-const getTeamsContaining = (players) => fp.pipe(
-  Object.keys,
-  fp.filter(team => fp.pipe(Object.keys, fp.intersection(players))(rose[team]).length > 0)
-)(rose)
+// returns an array with the team which contain the player received in input
+function getTeamsContaining(player) {
+  const teams = Object.keys(rose)
+  return teams.filter(team => Object.keys(rose[team]).includes(player))
+}
 
 // sends a message to the fantamorto slack channel
 async function notifySlack(message) {
@@ -59,32 +59,6 @@ async function notifySlack(message) {
   return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(botConfig) })
 }
 
-async function getDeadFromWikipedia(hopefullyDead) {
-  const dead = []
-
-  await pMap(fp.chunk(MAX_WIKIPEDIA_QUERIES)(hopefullyDead), async (hopefullyDeadChunk) => {
-    const responseIt = await got(wikiCall({ query: toWikiQueryString(hopefullyDeadChunk) }), { json: true })
-    console.log(`Called ${responseIt.url}`)
-
-    dead.push(...getDead(responseIt.body))
-
-    const missingIt = getMissing(responseIt.body)
-    if (missingIt.length > 0) {
-      const responseEn = await got(wikiCall({ query: toWikiQueryString(missingIt), lang: 'en' }), { json: true })
-      console.log(`Called ${responseEn.url}`)
-
-      const missingEn = getMissing(responseEn.body)
-      if (missingEn.length > 0) {
-        throw new Error(`Couldn't find a wikipedia page for ${missingEn.join(', ')}`)
-      }
-
-      dead.push(...getDead(responseEn.body))
-    }
-  })
-
-  return dead
-}
-
 async function checkMorti(event, context, callback = fp.noop) {
   // notify aws lambda if there are any errors in promises
   process.on('unhandledRejection', err => {
@@ -92,30 +66,47 @@ async function checkMorti(event, context, callback = fp.noop) {
     callback(err)
   })
 
-  const hopefullyDead = getAllNames(rose)
+  const players = getAllNames(rose)
 
-  const [ dead, alreadyDead ] = await Promise.all([
-    getDeadFromWikipedia(hopefullyDead),
-    getAlreadyDeadList(),
+  const [ deadFromWikipedia, maybeDead, savedDead ] = await Promise.all([
+    getDeadFromWikipedia(players),
+    getMaybeDeadList(),
+    getSavedDeadList(),
   ])
 
-  const freshlyDead = dead.filter(name => !alreadyDead.includes(name))
+  // check if someone new is dead!
+  const freshlyDead = deadFromWikipedia.filter(name => !savedDead.includes(name))
 
-  if (freshlyDead.length > 0) {
-    await setAlreadyDeadList([ ...alreadyDead, ...freshlyDead ])
-    await notifySlack(`⚰️ *${freshlyDead.join(', ')}* è deceduto. RIP in peace. ⚰️`)
-    const winningTeams = getTeamsContaining(freshlyDead)
-    await notifySlack(`Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉`)
-    await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`10 + (100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` (arrotondati all'intero più vicino) più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
 
-    // notify aws lambda
-    console.info(`--------------- ${freshlyDead.map(dead => dead.toUpperCase()).join(', ')} DIED ---------------`)
-    callback(null, `${freshlyDead.join(', ')} died!`)
-  } else {
+  if (freshlyDead.length === 0) {
     // notify aws lambda
     console.info('--------------- NOBODY DIED ---------------')
     return callback(null, 'Nobody died.')
   }
+
+  await pEachSeries(freshlyDead, async (dead) => {
+    if (!maybeDead.includes(dead)) {
+      // they're dead but maybe they vandalized their page
+
+      await setMaybeDeadList([ ...maybeDead, dead ])
+    } else {
+      // no they really died, we double checked
+
+      maybeDead.splice(maybeDead.indexOf(dead), 1)
+      await setMaybeDeadList(maybeDead)
+      await setSavedDeadList([ ...savedDead, ...dead ])
+
+      await notifySlack(`⚰️ *${dead}* è deceduto. RIP in peace. ⚰️`)
+      const winningTeams = getTeamsContaining(dead)
+      await notifySlack(`Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉`)
+      await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`10 + (100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` (arrotondati all'intero più vicino) più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
+
+    }
+  })
+
+  // notify aws lambda
+  console.info(`--------------- ${freshlyDead.join(', ').toUpperCase()} DIED ---------------`)
+  callback(null, `${freshlyDead.join(', ')} died!`)
 }
 
 module.exports = {

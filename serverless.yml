@@ -28,4 +28,4 @@ functions:
     timeout: 20 # default is 6
     # The `events` block defines how to trigger the handler code
     events:
-      - schedule: rate(1 hour)
+      - schedule: rate(3 hours)
