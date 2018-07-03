@@ -88,13 +88,15 @@ async function checkMorti(event, context, callback = fp.noop) {
     if (!maybeDead.includes(dead)) {
       // they're dead but maybe they vandalized their page
 
-      await setMaybeDeadList([ ...maybeDead, dead ])
+      maybeDead.push(dead)
+      await setMaybeDeadList(maybeDead)
     } else {
       // no they really died, we double checked
 
       maybeDead.splice(maybeDead.indexOf(dead), 1)
       await setMaybeDeadList(maybeDead)
-      await setSavedDeadList([ ...savedDead, ...dead ])
+      savedDead.push(dead)
+      await setSavedDeadList(savedDead)
 
       await notifySlack(`⚰️ *${dead}* è deceduto. RIP in peace. ⚰️`)
       const winningTeams = getTeamsContaining(dead)
