@@ -79,6 +79,11 @@ async function checkMorti(event, context, callback = fp.noop) {
 
 
   if (freshlyDead.length === 0) {
+    // we checked again and he's not dead, it was a fake news, empty the list
+    if (maybeDead.length > 0) {
+      await setMaybeDeadList([])
+    }
+
     // notify aws lambda
     console.info('--------------- NOBODY DIED ---------------')
     return callback(null, 'Nobody died.')
