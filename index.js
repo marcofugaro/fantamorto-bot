@@ -2,7 +2,7 @@ require('dotenv').config()
 const fp = require('lodash/fp')
 const got = require('got')
 const pEachSeries = require('p-each-series')
-const rose = require('./fantamorto-rose-2018')
+const rose = require('./fantamorto-rose-2019')
 const { getDeadFromWikipedia } = require('./wikipedia')
 const { readGoogleDoc, writeGoogleDoc } = require('./google-drive')
 
@@ -51,12 +51,33 @@ function getTeamsContaining(player) {
   return teams.filter(team => Object.keys(rose[team]).includes(player))
 }
 
+// returns an object with all the names and all the years
+function getAllPlayers() {
+  const teamPlayers = Object.values(rose)
+  return teamPlayers.reduce((allPlayers, team) => {
+    const players = Object.keys(team)
+
+    players.forEach(player => {
+      allPlayers[player] = team[player]
+    })
+
+    return allPlayers
+  }, {})
+}
+
+
 // sends a message to the fantamorto slack channel
 async function notifySlack(message) {
-  const botConfig = {
+  // don't do it if we're testing
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`☠️ FANTAMORTO-BOT SAYS: ${message}`)
+    return
+  }
+
+  const body = {
     'text': message,
   }
-  return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(botConfig) })
+  return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(body) })
 }
 
 async function checkMorti(event, context, callback = fp.noop) {
@@ -64,6 +85,7 @@ async function checkMorti(event, context, callback = fp.noop) {
   process.on('unhandledRejection', err => {
     console.error(err.message)
     callback(err)
+    process.exit(1)
   })
 
   const players = getAllNames(rose)
@@ -95,6 +117,8 @@ async function checkMorti(event, context, callback = fp.noop) {
 
       maybeDead.push(dead)
       await setMaybeDeadList(maybeDead)
+
+      console.info(`--------------- ${dead.toUpperCase()} MAYBE DIED ---------------`)
     } else {
       // no they really died, we double checked
 
@@ -103,19 +127,30 @@ async function checkMorti(event, context, callback = fp.noop) {
       savedDead.push(dead)
       await setSavedDeadList(savedDead)
 
-      await notifySlack(`⚰️ *${dead}* è deceduto. RIP in peace. ⚰️`)
+      await notifySlack(`⚰️ *${dead}* è deceduto. RIP in peace. ️✝️ 😿 🙏🏻`)
       const winningTeams = getTeamsContaining(dead)
-      await notifySlack(`Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉`)
-      await notifySlack(`Calcola${winningTeams.length > 1 ? 'te' : ''} i punti utilizzando la formula \`10 + (100 - (${new Date().getFullYear()} - "anno di nascita")) / 10\` (arrotondati all'intero più vicino) più eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
+      await notifySlack(`👏🏻 Congratulazioni ${winningTeams.length > 1 ? 'ai' : 'al'} team *${winningTeams.join(', ')}* 🎉 💪🏻 🎊 💯`)
 
+      // calculate the holy formuoli
+      const players = getAllPlayers()
+      const years = players[dead]
+      const points = Math.round(10 + (100 - years) / 10)
+
+      await notifySlack(`🎯 Utilizzando la formula descritta nel regolamento ${winningTeams.length > 1 ? 'avete' : 'hai'} fatto ben *${points}* punti${winningTeams.length > 1 ? ' ciascuno' : ''}! 📝 Aggiung${winningTeams.length > 1 ? 'ete' : 'i'}ci eventuali bonus e segna${winningTeams.length > 1 ? 'te' : ''}li nel documento.`)
+
+      console.info(`--------------- ${dead.toUpperCase()} DIED ---------------`)
     }
   })
 
   // notify aws lambda
-  console.info(`--------------- ${freshlyDead.join(', ').toUpperCase()} DIED ---------------`)
   callback(null, `${freshlyDead.join(', ')} died!`)
 }
 
 module.exports = {
   checkMorti,
+}
+
+// actually call the function if we're testing
+if (process.env.NODE_ENV === 'development') {
+  checkMorti()
 }

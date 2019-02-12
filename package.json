@@ -2,10 +2,11 @@
   "name": "fantamorto-bot",
   "version": "1.0.0",
   "scripts": {
-    "start": "node index.js"
+    "start": "NODE_ENV=development node index.js"
   },
   "license": "MIT",
   "dependencies": {
+    "chalk": "^2.4.2",
     "dotenv": "^5.0.0",
     "google-auth-library": "^1.2.0",
     "googleapis": "^25.0.0",
@@ -16,14 +17,14 @@
     "pify": "^3.0.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.0.0-beta.40",
-    "@babel/polyfill": "^7.0.0-beta.40",
-    "@babel/preset-env": "^7.0.0-beta.40",
-    "@babel/preset-stage-0": "^7.0.0-beta.40",
-    "babel-loader": "8.0.0-beta.0",
-    "babel-plugin-source-map-support": "^2.0.0",
-    "serverless-webpack": "^4.3.0",
-    "webpack": "^3.11.0",
-    "webpack-node-externals": "^1.6.0"
+    "@babel/core": "^7.2.2",
+    "@babel/polyfill": "^7.2.5",
+    "@babel/preset-env": "^7.3.1",
+    "@babel/preset-stage-0": "^7.0.0",
+    "babel-loader": "8.0.5",
+    "babel-plugin-source-map-support": "^2.0.1",
+    "serverless-webpack": "^5.2.0",
+    "webpack": "^4.29.3",
+    "webpack-node-externals": "^1.7.2"
   }
 }
