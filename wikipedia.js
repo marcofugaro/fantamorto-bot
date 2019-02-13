@@ -1,15 +1,18 @@
 const fp = require('lodash/fp')
+const _ = require('lodash')
 const got = require('got')
 const chalk = require('chalk')
 const pMap = require('p-map')
 
 const MAX_WIKIPEDIA_QUERIES = 50
 
-const wikiCall = ({ query, lang = 'it' }) => `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${query}&prop=revisions&rvprop=content&format=json&formatversion=2`
+const wikiCall = ({ query, lang }) => `https://${lang}.wikipedia.org/w/api.php?action=query&titles=${query}&prop=revisions&rvprop=content&format=json&formatversion=2`
 
-// new RegExp('STOCAZZO', )
-// /STOCAZZO/
-const isDeadRegex = /(LuogoMorte = ([^\n]+))|(AnnoMorte = ([^\n]+))|(death_place = ([^\n]+))|(death_date = ([^\n]+))|(STERBEDATUM=([^\n]+))|(STERBEORT=([^\n]+))/g
+// matches the word with something after which isn't a new line, it should be the death date or place
+const DEAD_KEYWORDS = ['LuogoMorte = ', 'AnnoMorte = ', 'death_place = ', 'STERBEDATUM=', 'STERBEORT=']
+const isDeadRegex = new RegExp(DEAD_KEYWORDS.map(word => `(${word}([^\\n]+))`).join('|'), 'g')
+
+// skip the redirect pages, usually it's a string like '#RINVIA'
 const isRedirectRegex = /^#((redirect)|(rinvia)|(umleiten))/gi
 
 // ['name', 'Other name']  --> 'name|Other%20name'
@@ -36,43 +39,46 @@ const getDead = fp.pipe(
   fp.map('title'),
 )
 
+// check wikipedia in one language and returns the dead and the missing pages
+async function checkWikipedia(players, lang) {
+  const dead = []
+  const missing = []
+
+  // chunk the players array if it exceeds the max wikipedia queries in one call
+  const chunkedPlayers = _.chunk(players, MAX_WIKIPEDIA_QUERIES)
+
+  await pMap(chunkedPlayers, async (playersChunk) => {
+    const response = await got(wikiCall({ query: toWikiQueryString(playersChunk), lang }), { json: true })
+    console.log(`Called ${response.url}`)
+    console.log()
+
+    dead.push(...getDead(response.body))
+    missing.push(...getMissing(response.body))
+  })
+
+  return { dead, missing }
+}
+
 async function getDeadFromWikipedia(players) {
   const deadFromWikipedia = []
 
-  await pMap(fp.chunk(MAX_WIKIPEDIA_QUERIES)(players), async (playersChunk) => {
-    const responseIt = await got(wikiCall({ query: toWikiQueryString(playersChunk) }), { json: true })
-    console.log(`Called ${responseIt.url}`)
-    console.log()
+  const { dead: deadIt, missing: missingIt } = await checkWikipedia(players, 'it')
+  deadFromWikipedia.push(...deadIt)
 
+  if (missingIt.length > 0) {
+    const { dead: deadEn, missing: missingEn } = await checkWikipedia(missingIt, 'en')
+    deadFromWikipedia.push(...deadEn)
 
-    const missingIt = getMissing(responseIt.body)
-    if (missingIt.length > 0) {
-      const responseEn = await got(wikiCall({ query: toWikiQueryString(missingIt), lang: 'en' }), { json: true })
-      console.log(`Called ${responseEn.url}`)
-      console.log()
+    if (missingEn.length > 0) {
+      const { dead: deadDe, missing: missingDe } = await checkWikipedia(missingEn, 'de')
+      deadFromWikipedia.push(...deadDe)
 
-
-      const missingEn = getMissing(responseEn.body)
-      if (missingEn.length > 0) {
-        const responseDe = await got(wikiCall({ query: toWikiQueryString(missingEn), lang: 'de' }), { json: true })
-        console.log(`Called ${responseDe.url}`)
-        console.log()
-
-
-        const missingDe = getMissing(responseDe.body)
-        if (missingDe.length > 0) {
-          console.log(chalk.red(`Couldn't find a wikipedia page for ${missingDe.join(', ')}`))
-          return
-        }
-
-        deadFromWikipedia.push(...getDead(responseDe.body))
+      if (missingDe.length > 0) {
+        console.log(chalk.red(`Couldn't find a wikipedia page for ${missingDe.join(', ')}`))
+        process.exit(1)
       }
-
-      deadFromWikipedia.push(...getDead(responseEn.body))
     }
-
-    deadFromWikipedia.push(...getDead(responseIt.body))
-  })
+  }
 
   return deadFromWikipedia
 }

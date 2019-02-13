@@ -74,9 +74,7 @@ async function notifySlack(message) {
     return
   }
 
-  const body = {
-    'text': message,
-  }
+  const body = { text: message }
   return await got.post(process.env.SLACK_WEBHOOK, { body: JSON.stringify(body) })
 }
 
