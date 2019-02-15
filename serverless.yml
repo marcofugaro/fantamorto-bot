@@ -7,18 +7,10 @@
 # The `service` block is the name of the service
 service: check-morti
 
-# Use the serverless-webpack plugin to transpile ES6
-plugins:
-  - serverless-webpack
-
-# Enable auto-packing of external modules
-custom:
-  webpackIncludeModules: true
-
 # The `provider` block defines where your service will be deployed
 provider:
   name: aws
-  runtime: nodejs6.10
+  runtime: nodejs8.10
   region: eu-central-1
 
 # The `functions` block defines what code to deploy
